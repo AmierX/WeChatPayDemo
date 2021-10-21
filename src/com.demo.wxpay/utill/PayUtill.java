@@ -24,8 +24,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
-import java.security.PrivateKey;
+import java.security.*;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -86,7 +86,7 @@ public class PayUtill {
         String bodyAsString = EntityUtils.toString(response.getEntity());
         System.out.println(bodyAsString); //  { "prepay_id": "wx26112221580621e9b071c00d9e093b0000"}
         JsonNode node = objectMapper.readTree(bodyAsString);
-        String prepayId = node.get("prepay_id").toString();
+        String prepayId = node.get("prepay_id").asText();
         //----------------------------------- jsapi下单获取预支付id 结束 -------------------------
 
         //----------------------------------- 计算签名 开始 -------------------------
@@ -103,7 +103,7 @@ public class PayUtill {
         sb.append(prepayId).append("\n");
         //RsaCryptoUtil.encryptOAEP() 加密
         //RsaCryptoUtil.decryptOAEP() 解密
-        String ciphertext = RsaCryptoUtil.encryptOAEP(sb.toString(), verifier.getValidCertificate());
+        String ciphertext = sign(sb.toString().getBytes("utf-8"), PayConstants.PRIVATE_KEY);
         System.out.println(ciphertext); // 计算后的签名值
         //----------------------------------- 计算签名 结束 -------------------------
 
@@ -115,6 +115,32 @@ public class PayUtill {
         map.put("sign", ciphertext);
 
         return map;
+    }
+
+    private static String sign(byte[] message, String key) throws NoSuchAlgorithmException, SignatureException, InvalidKeyException {
+        Signature sign = Signature.getInstance("SHA256withRSA");
+        sign.initSign(getPrivateKey(key));
+        sign.update(message);
+
+        return Base64.getEncoder().encodeToString(sign.sign());
+    }
+
+
+    /**
+     * 解码PrivateKey
+     * @param key
+     * @return
+     */
+    public static PrivateKey  getPrivateKey(String key) {
+
+        try {
+            return PemUtil.loadPrivateKey(
+                    new ByteArrayInputStream(key.getBytes("utf-8")));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return null;
     }
 
     /**
@@ -135,11 +161,6 @@ public class PayUtill {
             AutoUpdateCertificatesVerifier verifier = new AutoUpdateCertificatesVerifier(
                     new WechatPay2Credentials(PayConstants.MCH_ID, new PrivateKeySigner(PayConstants.MCH_SERIAL_NO, merchantPrivateKey)),
                     PayConstants.API_V3KEY.getBytes("utf-8"));
-
-            CloseableHttpClient httpClient = WechatPayHttpClientBuilder.create()
-                    .withMerchant(PayConstants.MCH_ID, PayConstants.MCH_SERIAL_NO, merchantPrivateKey)
-                    .withValidator(new WechatPay2Validator(verifier))
-                    .build();
             //-----------------------------初始化结束-------------------
 
             return verifier.verify(serialNumber, message.getBytes("utf-8"), signature);
@@ -161,9 +182,9 @@ public class PayUtill {
             ObjectMapper objectMapper = new ObjectMapper();
             JsonNode node = objectMapper.readTree(data);
             JsonNode resource = node.get("resource"); // 通知资源数据
-            String ciphertext = resource.get("ciphertext").textValue(); // 数据密文(需解密)
-            String associatedData = resource.get("associated_data").textValue();// 附加数据
-            String nonce = resource.get("nonce").textValue(); // 随机串
+            String ciphertext = resource.get("ciphertext").asText(); // 数据密文(需解密)
+            String associatedData = resource.get("associated_data").asText();// 附加数据
+            String nonce = resource.get("nonce").asText(); // 随机串
             return aes.decryptToString(associatedData.getBytes(StandardCharsets.UTF_8), nonce.getBytes(StandardCharsets.UTF_8)
             , ciphertext);
         } catch (GeneralSecurityException | IOException e) {

@@ -10,6 +10,5 @@ public interface PayConstants {
     String API_V3KEY = ""; // API_V3KEY
     // 你的商户私钥
     String PRIVATE_KEY =  "-----BEGIN PRIVATE KEY-----\n"
-            + ""
             + "-----END PRIVATE KEY-----\n";
 }
